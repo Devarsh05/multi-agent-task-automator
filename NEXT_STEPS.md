@@ -13,7 +13,7 @@
 ## Phase 1: Foundation (Week 1-2) 🏗️
 
 ### 1.1 Database Setup
-**Priority: HIGH**
+**Priority: HIGH** ✅ **IN PROGRESS**
 
 Choose and set up a database:
 - **Option A**: PostgreSQL with Prisma ORM (Recommended)
@@ -23,21 +23,25 @@ Choose and set up a database:
 - **Option B**: MongoDB with Mongoose
   - Flexible schema
   - Good for document-based data
-- **Option C**: Supabase (PostgreSQL + Auth + Real-time)
+- **Option C**: Supabase (PostgreSQL + Auth + Real-time) ⭐ **SELECTED**
   - All-in-one solution
   - Built-in authentication
   - Real-time subscriptions
 
 **Tasks:**
-- [ ] Install database client/ORM
-- [ ] Set up database connection
-- [ ] Create schema for:
-  - Users
-  - Tasks (title, description, status, priority, dueDate, userId)
-  - Calendar Events (title, startTime, endTime, userId)
-  - Agent Jobs (taskInput, status, userId, createdAt)
-  - Notifications (message, type, userId, read)
-  - Reports/Analytics data
+- [x] Install database client/ORM (`@prisma/client` already installed)
+- [x] Set up database connection (`lib/db.ts` created)
+- [x] Create schema for:
+  - [x] Users
+  - [x] Tasks (title, description, status, priority, dueDate, userId)
+  - [x] Calendar Events (title, startTime, endTime, userId)
+  - [x] Agent Jobs (taskInput, status, userId, createdAt)
+  - [x] Notifications (message, type, userId, read)
+  - [x] Reports/Analytics data
+- [ ] Configure Supabase connection (see `SUPABASE_SETUP.md` for detailed guide)
+- [ ] Run database migrations (`npx prisma db push` or `npx prisma migrate dev`)
+
+**📘 Setup Guide:** See `SUPABASE_SETUP.md` for step-by-step instructions on connecting to Supabase.
 
 ### 1.2 Authentication Implementation
 **Priority: HIGH**
