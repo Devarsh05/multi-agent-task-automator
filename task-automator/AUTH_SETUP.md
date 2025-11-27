@@ -194,3 +194,4 @@ The authentication uses these Prisma models:
 - [Prisma Adapter](https://authjs.dev/reference/adapter/prisma)
 - [bcryptjs Documentation](https://www.npmjs.com/package/bcryptjs)
 
+

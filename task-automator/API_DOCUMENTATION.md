@@ -346,3 +346,4 @@ const updatedTask = await response.json()
 4. **Optimistic Updates**: Update UI immediately, then sync with server
 5. **Real-time Updates**: Add WebSocket/SSE for live updates (Phase 4)
 
+
