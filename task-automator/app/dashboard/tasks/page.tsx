@@ -1,43 +1,135 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Plus, MoreHorizontal, CheckCircle2, Circle, Clock } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Plus, Search, Filter, ArrowUpDown } from "lucide-react"
+import { TaskCard } from "./components/TaskCard"
+import { TaskForm } from "./components/TaskForm"
+import { toast } from "sonner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+interface Task {
+  id: string
+  title: string
+  description?: string | null
+  status: "TODO" | "IN_PROGRESS" | "COMPLETED"
+  priority: "LOW" | "MEDIUM" | "HIGH"
+  dueDate?: string | null
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export default function TasksPage() {
-  const tasks = [
-    {
-      id: 1,
-      title: "Review Q4 reports",
-      description: "Analyze quarterly performance metrics",
-      status: "in-progress",
-      priority: "high",
-      dueDate: "Today",
-    },
-    {
-      id: 2,
-      title: "Update project documentation",
-      description: "Add API endpoints and usage examples",
-      status: "todo",
-      priority: "medium",
-      dueDate: "Tomorrow",
-    },
-    {
-      id: 3,
-      title: "Team standup meeting",
-      description: "Daily sync with development team",
-      status: "completed",
-      priority: "low",
-      dueDate: "Completed",
-    },
-    {
-      id: 4,
-      title: "Client presentation prep",
-      description: "Prepare slides for quarterly review",
-      status: "in-progress",
-      priority: "high",
-      dueDate: "Today",
-    },
-  ]
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<"createdAt" | "dueDate" | "priority">("createdAt")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
+
+  const fetchTasks = async () => {
+    try {
+      setIsLoading(true)
+      const params = new URLSearchParams()
+      if (statusFilter) params.append("status", statusFilter)
+      if (priorityFilter) params.append("priority", priorityFilter)
+
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch tasks")
+      }
+
+      const data = await response.json()
+      setTasks(data)
+    } catch (error) {
+      toast.error("Failed to load tasks")
+      console.error("Error fetching tasks:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks()
+  }, [statusFilter, priorityFilter])
+
+  useEffect(() => {
+    let filtered = [...tasks]
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (task) =>
+          task.title.toLowerCase().includes(query) ||
+          task.description?.toLowerCase().includes(query)
+      )
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0
+
+      switch (sortBy) {
+        case "dueDate":
+          const aDate = a.dueDate ? new Date(a.dueDate).getTime() : 0
+          const bDate = b.dueDate ? new Date(b.dueDate).getTime() : 0
+          comparison = aDate - bDate
+          break
+        case "priority":
+          const priorityOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 }
+          comparison = priorityOrder[b.priority] - priorityOrder[a.priority]
+          break
+        case "createdAt":
+        default:
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          break
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison
+    })
+
+    setFilteredTasks(filtered)
+  }, [tasks, searchQuery, sortBy, sortOrder])
+
+  const handleEdit = (task: Task) => {
+    setEditingTask(task)
+    setIsFormOpen(true)
+  }
+
+  const handleFormClose = () => {
+    setIsFormOpen(false)
+    setEditingTask(undefined)
+  }
+
+  const handleSuccess = () => {
+    fetchTasks()
+  }
+
+  const clearFilters = () => {
+    setStatusFilter(null)
+    setPriorityFilter(null)
+    setSearchQuery("")
+  }
+
+  const hasActiveFilters = statusFilter || priorityFilter || searchQuery
 
   return (
     <div className="space-y-6">
@@ -48,75 +140,174 @@ export default function TasksPage() {
           </h1>
           <p className="text-slate-400 mt-1">Manage and track all your tasks</p>
         </div>
-        <Button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-blue-500/20">
+        <Button
+          onClick={() => setIsFormOpen(true)}
+          className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-blue-500/20"
+        >
           <Plus className="size-4 mr-2" />
           New Task
         </Button>
       </div>
 
-      <div className="grid gap-4">
-        {tasks.map((task) => (
-          <Card
-            key={task.id}
-            className="bg-slate-900/50 backdrop-blur-xl border-slate-800/50 shadow-lg hover:shadow-blue-500/10 hover:border-blue-500/30 transition-all"
+      {/* Filters and Search */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-500" />
+          <Input
+            type="search"
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-slate-950/50 border-slate-800 text-white placeholder:text-slate-500 focus:border-blue-500"
+          />
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/50">
+              <Filter className="size-4 mr-2" />
+              Filter
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="bg-slate-900 border-slate-800" align="end">
+            <DropdownMenuLabel className="text-slate-300">Status</DropdownMenuLabel>
+            <DropdownMenuItem
+              className={statusFilter === null ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setStatusFilter(null)}
+            >
+              All
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={statusFilter === "TODO" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setStatusFilter("TODO")}
+            >
+              To Do
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={statusFilter === "IN_PROGRESS" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setStatusFilter("IN_PROGRESS")}
+            >
+              In Progress
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={statusFilter === "COMPLETED" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setStatusFilter("COMPLETED")}
+            >
+              Completed
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-slate-800" />
+            <DropdownMenuLabel className="text-slate-300">Priority</DropdownMenuLabel>
+            <DropdownMenuItem
+              className={priorityFilter === null ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setPriorityFilter(null)}
+            >
+              All
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={priorityFilter === "HIGH" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setPriorityFilter("HIGH")}
+            >
+              High
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={priorityFilter === "MEDIUM" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setPriorityFilter("MEDIUM")}
+            >
+              Medium
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={priorityFilter === "LOW" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setPriorityFilter("LOW")}
+            >
+              Low
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/50">
+              <ArrowUpDown className="size-4 mr-2" />
+              Sort
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="bg-slate-900 border-slate-800" align="end">
+            <DropdownMenuLabel className="text-slate-300">Sort By</DropdownMenuLabel>
+            <DropdownMenuItem
+              className={sortBy === "createdAt" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setSortBy("createdAt")}
+            >
+              Date Created
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === "dueDate" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setSortBy("dueDate")}
+            >
+              Due Date
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === "priority" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setSortBy("priority")}
+            >
+              Priority
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-slate-800" />
+            <DropdownMenuItem
+              className={sortOrder === "asc" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setSortOrder("asc")}
+            >
+              Ascending
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortOrder === "desc" ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"}
+              onClick={() => setSortOrder("desc")}
+            >
+              Descending
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            className="text-slate-400 hover:text-white"
           >
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <button className="mt-1">
-                  {task.status === "completed" ? (
-                    <CheckCircle2 className="size-5 text-green-400" />
-                  ) : (
-                    <Circle className="size-5 text-slate-600 hover:text-blue-400 transition-colors" />
-                  )}
-                </button>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h3
-                        className={`text-lg font-semibold text-white ${
-                          task.status === "completed" ? "line-through opacity-50" : ""
-                        }`}
-                      >
-                        {task.title}
-                      </h3>
-                      <p className="text-sm text-slate-400 mt-1">{task.description}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-slate-400 hover:text-white hover:bg-slate-800/50"
-                    >
-                      <MoreHorizontal className="size-4" />
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center gap-3 mt-4">
-                    <Badge
-                      variant={
-                        task.priority === "high" ? "destructive" : task.priority === "medium" ? "default" : "secondary"
-                      }
-                      className={
-                        task.priority === "high"
-                          ? "bg-red-500/20 text-red-400 border-red-500/30"
-                          : task.priority === "medium"
-                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                            : "bg-slate-800/50 text-slate-400 border-slate-700/50"
-                      }
-                    >
-                      {task.priority}
-                    </Badge>
-                    <div className="flex items-center gap-1 text-xs text-slate-500">
-                      <Clock className="size-3" />
-                      {task.dueDate}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            Clear Filters
+          </Button>
+        )}
       </div>
+
+      {/* Tasks List */}
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-slate-400">Loading tasks...</p>
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <Card className="bg-slate-900/50 backdrop-blur-xl border-slate-800/50">
+          <CardContent className="p-12 text-center">
+            <p className="text-slate-400 text-lg">
+              {tasks.length === 0
+                ? "No tasks yet. Create your first task!"
+                : "No tasks match your filters."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {filteredTasks.map((task) => (
+            <TaskCard key={task.id} task={task} onUpdate={handleSuccess} onEdit={handleEdit} />
+          ))}
+        </div>
+      )}
+
+      {/* Task Form Dialog */}
+      <TaskForm
+        open={isFormOpen}
+        onOpenChange={handleFormClose}
+        task={editingTask}
+        onSuccess={handleSuccess}
+      />
     </div>
   )
 }
