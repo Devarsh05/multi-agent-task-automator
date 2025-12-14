@@ -1,23 +1,35 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Plus, Clock } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { CalendarEventForm } from "./components/CalendarEventForm"
+import { EventCard } from "./components/EventCard"
+import { toast } from "sonner"
+import { format, startOfMonth, endOfMonth, isSameDay, isSameMonth } from "date-fns"
 
-const mockEvents = [
-  { id: 1, title: "Morning focus time", time: "9:00 AM", duration: "2h", color: "bg-primary" },
-  { id: 2, title: "Team standup", time: "11:00 AM", duration: "30m", color: "bg-chart-2" },
-  { id: 3, title: "Lunch break", time: "12:00 PM", duration: "1h", color: "bg-muted" },
-  { id: 4, title: "Client presentation", time: "2:00 PM", duration: "1h", color: "bg-chart-4" },
-  { id: 5, title: "Weekly planning", time: "4:00 PM", duration: "1h", color: "bg-chart-3" },
-]
+interface CalendarEvent {
+  id: string
+  title: string
+  description?: string | null
+  startTime: string
+  endTime: string
+  allDay: boolean
+  color?: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | undefined>(undefined)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
-
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay()
 
   const monthNames = [
@@ -34,6 +46,37 @@ export default function CalendarPage() {
     "November",
     "December",
   ]
+
+  const fetchEvents = async () => {
+    try {
+      setIsLoading(true)
+      const startOfCurrentMonth = startOfMonth(currentDate)
+      const endOfCurrentMonth = endOfMonth(currentDate)
+
+      const response = await fetch(
+        `/api/calendar?startDate=${startOfCurrentMonth.toISOString()}&endDate=${endOfCurrentMonth.toISOString()}`,
+        {
+          credentials: "include",
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch events")
+      }
+
+      const data = await response.json()
+      setEvents(data)
+    } catch (error) {
+      toast.error("Failed to load events")
+      console.error("Error fetching events:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchEvents()
+  }, [currentDate])
 
   const previousMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))
@@ -52,6 +95,59 @@ export default function CalendarPage() {
     )
   }
 
+  const getEventsForDay = (day: number) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+    return events.filter((event) => {
+      const eventStart = new Date(event.startTime)
+      const eventEnd = new Date(event.endTime)
+
+      // Check if event overlaps with this day
+      if (event.allDay) {
+        return isSameDay(eventStart, date) || isSameDay(eventEnd, date) || (eventStart <= date && eventEnd >= date)
+      }
+
+      return (
+        isSameDay(eventStart, date) ||
+        isSameDay(eventEnd, date) ||
+        (eventStart <= date && eventEnd >= date)
+      )
+    })
+  }
+
+  const handleDayClick = (day: number) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+    setSelectedDate(date)
+    setEditingEvent(undefined)
+    setIsFormOpen(true)
+  }
+
+  const handleEdit = (event: CalendarEvent) => {
+    setEditingEvent(event)
+    setSelectedDate(undefined)
+    setIsFormOpen(true)
+  }
+
+  const handleFormClose = () => {
+    setIsFormOpen(false)
+    setEditingEvent(undefined)
+    setSelectedDate(undefined)
+  }
+
+  const handleSuccess = () => {
+    fetchEvents()
+  }
+
+  // Get today's events
+  const todaysEvents = events.filter((event) => {
+    const eventStart = new Date(event.startTime)
+    return isSameDay(eventStart, today)
+  })
+
+  const getColorClass = (color?: string | null) => {
+    if (!color) return "bg-blue-500"
+    return color.startsWith("#") ? "" : `bg-${color}-500`
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -61,7 +157,14 @@ export default function CalendarPage() {
           </h1>
           <p className="text-slate-400 mt-1">View and manage your scheduled events</p>
         </div>
-        <Button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-blue-500/20">
+        <Button
+          onClick={() => {
+            setSelectedDate(new Date())
+            setEditingEvent(undefined)
+            setIsFormOpen(true)
+          }}
+          className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-blue-500/20"
+        >
           <Plus className="size-4 mr-2" />
           New Event
         </Button>
@@ -126,21 +229,38 @@ export default function CalendarPage() {
                 {Array.from({ length: daysInMonth }).map((_, index) => {
                   const day = index + 1
                   const isCurrentDay = isToday(day)
+                  const dayEvents = getEventsForDay(day)
+                  const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
 
                   return (
                     <button
                       key={day}
-                      className={`aspect-square p-2 rounded-lg text-sm font-medium transition-all ${
+                      onClick={() => handleDayClick(day)}
+                      className={`aspect-square p-1 rounded-lg text-sm font-medium transition-all relative ${
                         isCurrentDay
                           ? "bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20"
                           : "hover:bg-slate-800/50 text-white"
                       }`}
                     >
-                      {day}
-                      {day === today.getDate() && currentDate.getMonth() === today.getMonth() && (
-                        <div className="flex justify-center gap-0.5 mt-1">
-                          <div className="size-1 rounded-full bg-white" />
-                          <div className="size-1 rounded-full bg-white" />
+                      <div className="text-center">{day}</div>
+                      {/* Event indicators */}
+                      {dayEvents.length > 0 && (
+                        <div className="flex justify-center gap-0.5 mt-1 flex-wrap">
+                          {dayEvents.slice(0, 3).map((event, idx) => (
+                            <div
+                              key={event.id}
+                              className={`size-1.5 rounded-full ${
+                                event.color
+                                  ? getColorClass(event.color) || ""
+                                  : "bg-blue-500"
+                              }`}
+                              style={event.color?.startsWith("#") ? { backgroundColor: event.color } : undefined}
+                              title={event.title}
+                            />
+                          ))}
+                          {dayEvents.length > 3 && (
+                            <div className="text-[8px] text-slate-400">+{dayEvents.length - 3}</div>
+                          )}
                         </div>
                       )}
                     </button>
@@ -158,57 +278,38 @@ export default function CalendarPage() {
               <div>
                 <h3 className="font-semibold text-white mb-1">Today's Events</h3>
                 <p className="text-sm text-slate-400">
-                  {today.toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })}
+                  {format(today, "EEEE, MMMM d, yyyy")}
                 </p>
               </div>
 
-              <div className="space-y-3">
-                {mockEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="p-3 rounded-lg border border-slate-800/50 bg-slate-950/30 hover:bg-slate-800/30 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`size-1.5 rounded-full ${event.color === "bg-primary" ? "bg-blue-500" : event.color === "bg-chart-2" ? "bg-purple-500" : event.color === "bg-muted" ? "bg-slate-500" : event.color === "bg-chart-4" ? "bg-pink-500" : "bg-green-500"} mt-2`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white mb-1">{event.title}</p>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <Clock className="size-3" />
-                          {event.time} • {event.duration}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {isLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-slate-400 text-sm">Loading events...</p>
+                </div>
+              ) : todaysEvents.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-slate-400 text-sm">No events scheduled for today</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                  {todaysEvents.map((event) => (
+                    <EventCard key={event.id} event={event} onUpdate={handleSuccess} onEdit={handleEdit} />
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Integration Status */}
-      <Card className="bg-slate-900/50 backdrop-blur-xl border-slate-800/50 shadow-lg">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-white mb-1">Calendar Integration</h3>
-              <p className="text-sm text-slate-400">Connect your Google Calendar to sync events automatically</p>
-            </div>
-            <Button
-              variant="outline"
-              className="bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
-            >
-              Connect Google Calendar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Event Form Dialog */}
+      <CalendarEventForm
+        open={isFormOpen}
+        onOpenChange={handleFormClose}
+        event={editingEvent}
+        defaultDate={selectedDate}
+        onSuccess={handleSuccess}
+      />
     </div>
   )
 }
